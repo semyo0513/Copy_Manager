@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>모두의 복붙 - 창순기획</title>
+    <!-- Google Fonts Outfit & Noto Sans KR -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 최상단 프로그레스 바 -->
+    <div class="progress-container">
+        <div class="progress-bar" id="progressBar"></div>
+    </div>
+
+    <div class="app-container">
+        <!-- 네온 헤더 -->
+        <header class="app-header">
+            <h1 class="neon-title" id="neonTitle">창순기획 <span class="sub-neon">all right~</span></h1>
+            <p class="app-subtitle"><i class="fa-solid fa-bolt"></i> 모두의 복붙 v2.0</p>
+        </header>
+
+        <!-- 메인 콘텐츠 영역 -->
+        <main class="app-main">
+            <!-- 설정 카드 -->
+            <div class="card settings-card">
+                <div class="setting-item">
+                    <span class="setting-label">
+                        <i class="fa-solid fa-arrow-right-arrow-left"></i> 탭(Tab) 이동 횟수
+                    </span>
+                    <div class="spinner-container">
+                        <button type="button" class="btn-spinner" id="btnMinus" aria-label="감소"><i class="fa-solid fa-minus"></i></button>
+                        <span class="spinner-value" id="tabCount">1</span>
+                        <button type="button" class="btn-spinner" id="btnPlus" aria-label="증가"><i class="fa-solid fa-plus"></i></button>
+                    </div>
+                </div>
+
+                <div class="setting-item flex-column">
+                    <div class="slider-header">
+                        <span class="setting-label">
+                            <i class="fa-solid fa-stopwatch"></i> 입력 지연 속도 (Delay)
+                        </span>
+                        <span class="slider-value-display" id="delayValue">0.2초</span>
+                    </div>
+                    <input type="range" class="delay-slider" id="delaySlider" min="0.1" max="2.0" step="0.1" value="0.2">
+                    <div class="slider-ticks">
+                        <span>빠름 (0.1s)</span>
+                        <span>보통 (1.0s)</span>
+                        <span>느림 (2.0s)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 데이터 감지 카드 -->
+            <div class="card status-card">
+                <div class="clipboard-status" id="clipboardStatus">
+                    <div class="status-icon-box">
+                        <i class="fa-solid fa-clipboard-list"></i>
+                    </div>
+                    <div class="status-info">
+                        <h3 class="info-title">클립보드 데이터 감지</h3>
+                        <p class="info-desc" id="clipboardDesc">클립보드에 복사된 엑셀 데이터가 없습니다.</p>
+                    </div>
+                </div>
+                
+                <!-- 상세 진행 상태 표시 (숨겨져 있다가 실행 시 활성화) -->
+                <div class="active-status-container" id="activeStatusContainer">
+                    <div class="countdown-circle">
+                        <span class="countdown-num" id="countdownNum">0</span>
+                        <span class="countdown-total" id="countdownTotal">/ 0</span>
+                    </div>
+                    <div class="status-text-msg" id="statusTextMsg">입력 대기 중...</div>
+                </div>
+            </div>
+
+            <!-- 하단 액션 컨트롤 -->
+            <div class="action-container">
+                <button type="button" class="btn-action btn-start btn-pulse" id="btnStart">
+                    <span class="btn-content"><i class="fa-solid fa-play"></i> 자동 입력 시작</span>
+                </button>
+                <button type="button" class="btn-action btn-stop" id="btnStop" disabled>
+                    <span class="btn-content"><i class="fa-solid fa-ban"></i> 긴급 중지 (ESC)</span>
+                </button>
+            </div>
+        </main>
+
+        <!-- 저작권 푸터 -->
+        <footer class="app-footer">
+            <p class="copyright">ⓒ 창순기획 All rights reserved.</p>
+        </footer>
+    </div>
+
+    <!-- 토스트 알림 컨테이너 -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Eel 브릿지 스크립트 (빌드 후 Eel이 자동 매핑) -->
+    <script type="text/javascript" src="/eel.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

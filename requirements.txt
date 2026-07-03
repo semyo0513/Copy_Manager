@@ -1,0 +1,6 @@
+pyinstaller
+pyautogui
+pyperclip
+keyboard
+eel
+
