@@ -28,7 +28,7 @@ else:
 def get_clipboard_data():
     """
     클립보드에 복사된 텍스트 데이터를 분석하여 엑셀 2차원 표 구조로 파싱합니다.
-    csv.reader를 활용하여 셀 내부의 개행(Alt+Enter)도 정상적으로 문자 취급하여 행 꼬임을 차단합니다.
+    따옴표 짝맞춤 홀수 카운팅 상태머신을 활용해 셀 내 개행(Alt+Enter)을 안전하게 연결 정합 파싱합니다.
     """
     global is_running
     if is_running:
@@ -39,9 +39,41 @@ def get_clipboard_data():
         if not raw_data:
             return {"count": 0, "rows": []}
             
-        # raw_data 문자열을 파일 객체처럼 읽어들여 탭(\t) 구분자로 안전 파싱
-        # csv.QUOTE_NONE 설정을 통해 문장 내 큰따옴표(")가 탭 구분 파싱을 뭉개는 것을 완벽 차단합니다.
-        f = io.StringIO(raw_data.strip('\r\n'))
+        # 모든 형태의 개행문자(\r\n, \r)를 \n으로 우선 통합
+        normalized_data = raw_data.replace('\r\n', '\n').replace('\r', '\n')
+        raw_lines = normalized_data.strip('\n').split('\n')
+        
+        merged_lines = []
+        temp_line = []
+        in_quote = False
+        
+        # 큰따옴표의 짝이 열려 닫히지 않은 줄바꿈(셀 내부 개행)을 하나의 물리행으로 묶는 필터링
+        for line in raw_lines:
+            quote_count = line.count('"')
+            if in_quote:
+                temp_line.append(line)
+                if quote_count % 2 == 1:
+                    # 이번 행에 홀수 개의 따옴표가 등장해 열려 있던 쿼팅이 닫힘
+                    merged_lines.append('\n'.join(temp_line))
+                    temp_line = []
+                    in_quote = False
+            else:
+                if quote_count % 2 == 1:
+                    # 이번 행에 홀수 개의 따옴표가 등장해 쿼팅이 새로 시작됨
+                    in_quote = True
+                    temp_line.append(line)
+                else:
+                    # 따옴표 짝이 완벽한 단독 행
+                    merged_lines.append(line)
+                    
+        # 만약 루프가 끝났는데 닫히지 않은 쿼팅 버퍼가 존재한다면 (깨진 웹 복사본 등 방어)
+        if temp_line:
+            # 뭉뚱그리지 않고 원래 낱개 행으로 안전 해제하여 파싱 붕괴 차단
+            merged_lines.extend(temp_line)
+            
+        # 가공된 줄들을 다시 StringIO 파일 객체로 조립
+        f = io.StringIO('\n'.join(merged_lines))
+        # 쿼팅에 의한 탭 유실을 방지하기 위해 QUOTE_NONE 유지
         reader = csv.reader(f, delimiter='\t', quoting=csv.QUOTE_NONE)
         
         parsed_rows = []
@@ -51,7 +83,17 @@ def get_clipboard_data():
             if not row or all(not cell.strip() for cell in row):
                 continue
                 
-            cleaned_row = [cell.strip() for cell in row]
+            # 셀 값 정제 (Alt+Enter로 묶인 결과의 셀 양끝 엑셀용 큰따옴표 정제)
+            cleaned_row = []
+            for cell in row:
+                c_val = cell.strip()
+                # 엑셀 셀 내 개행 때문에 앞뒤로 생성된 큰따옴표 제거 ("텍스트" -> 텍스트)
+                if c_val.startswith('"') and c_val.endswith('"'):
+                    c_val = c_val[1:-1]
+                # 엑셀 이스케이프된 더블 따옴표 원복 ("" -> ")
+                c_val = c_val.replace('""', '"')
+                cleaned_row.append(c_val)
+                
             parsed_rows.append(cleaned_row)
             total_cells_count += len(cleaned_row)
             

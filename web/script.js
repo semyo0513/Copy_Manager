@@ -254,10 +254,7 @@ function renderTable() {
     }
     tableHtml += '</tr></thead><tbody>';
     
-    const maxPreviewRows = 5;
-    const previewRows = currentDataRows.slice(0, maxPreviewRows);
-    
-    previewRows.forEach((row, rIdx) => {
+    currentDataRows.forEach((row, rIdx) => {
         tableHtml += '<tr>';
         for (let cIdx = 0; cIdx < colCount; cIdx++) {
             const isColumnActive = activeColumns.includes(cIdx);
@@ -277,10 +274,6 @@ function renderTable() {
         tableHtml += '</tr>';
     });
     tableHtml += '</tbody></table>';
-    
-    if (currentDataRows.length > maxPreviewRows) {
-        tableHtml += `<div class="preview-more-msg" style="display: block;">외 ${currentDataRows.length - maxPreviewRows}개 행의 데이터가 더 있습니다. (표 안에서 가로 드래그 병합 및 셀 클릭 전체 보기가 가능합니다.)</div>`;
-    }
     
     previewTableContainer.innerHTML = tableHtml;
     previewTableContainer.style.display = 'block';
