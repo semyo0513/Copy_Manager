@@ -40,9 +40,9 @@ def get_clipboard_data():
             return {"count": 0, "rows": []}
             
         # raw_data 문자열을 파일 객체처럼 읽어들여 탭(\t) 구분자로 안전 파싱
-        # csv 모듈은 따옴표로 묶인 셀 내 개행(\n)을 행 바꿈으로 처리하지 않고 데이터로 보존함
+        # csv.QUOTE_NONE 설정을 통해 문장 내 큰따옴표(")가 탭 구분 파싱을 뭉개는 것을 완벽 차단합니다.
         f = io.StringIO(raw_data.strip('\r\n'))
-        reader = csv.reader(f, delimiter='\t')
+        reader = csv.reader(f, delimiter='\t', quoting=csv.QUOTE_NONE)
         
         parsed_rows = []
         total_cells_count = 0
