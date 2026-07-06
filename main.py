@@ -26,6 +26,7 @@ else:
 def get_clipboard_data():
     """
     클립보드에 복사된 텍스트 데이터를 분석하여 엑셀 2차원 표 구조로 파싱합니다.
+    모든 종류의 개행 문자(\r\n, \r, \n)를 지원하여 오파싱을 방지합니다.
     """
     global is_running
     if is_running:
@@ -36,8 +37,10 @@ def get_clipboard_data():
         if not raw_data:
             return {"count": 0, "rows": []}
             
-        # 문자열 정제 (앞뒤 공백 및 개행 제거)
-        cleaned_data = raw_data.strip('\r\n')
+        # 모든 형태의 개행문자(\r\n, \r)를 표준 \n으로 통합 정제하여 행이 꼬이는 문제를 근본적으로 예방합니다.
+        cleaned_data = raw_data.replace('\r\n', '\n').replace('\r', '\n')
+        cleaned_data = cleaned_data.strip('\n')
+        
         if not cleaned_data:
             return {"count": 0, "rows": []}
             
@@ -47,9 +50,6 @@ def get_clipboard_data():
         total_cells_count = 0
         
         for line in lines:
-            line = line.replace('\r', '') # Windows 개행문자 정제
-            # 완전히 빈 행은 패스하되, 공백으로 이루어진 행은 포함할 수도 있으나
-            # 엑셀 드래그 시 맨 하단 빈 행 등이 딸려오는 경우를 정제하기 위해 검사
             if not line.strip():
                 continue
                 
