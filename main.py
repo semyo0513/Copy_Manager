@@ -6,6 +6,8 @@ import threading
 import keyboard
 import sys
 import os
+import csv
+import io
 
 # 매크로 실행 제어 플래그
 is_running = False
@@ -26,7 +28,7 @@ else:
 def get_clipboard_data():
     """
     클립보드에 복사된 텍스트 데이터를 분석하여 엑셀 2차원 표 구조로 파싱합니다.
-    모든 종류의 개행 문자(\r\n, \r, \n)를 지원하여 오파싱을 방지합니다.
+    csv.reader를 활용하여 셀 내부의 개행(Alt+Enter)도 정상적으로 문자 취급하여 행 꼬임을 차단합니다.
     """
     global is_running
     if is_running:
@@ -37,25 +39,21 @@ def get_clipboard_data():
         if not raw_data:
             return {"count": 0, "rows": []}
             
-        # 모든 형태의 개행문자(\r\n, \r)를 표준 \n으로 통합 정제하여 행이 꼬이는 문제를 근본적으로 예방합니다.
-        cleaned_data = raw_data.replace('\r\n', '\n').replace('\r', '\n')
-        cleaned_data = cleaned_data.strip('\n')
+        # raw_data 문자열을 파일 객체처럼 읽어들여 탭(\t) 구분자로 안전 파싱
+        # csv 모듈은 따옴표로 묶인 셀 내 개행(\n)을 행 바꿈으로 처리하지 않고 데이터로 보존함
+        f = io.StringIO(raw_data.strip('\r\n'))
+        reader = csv.reader(f, delimiter='\t')
         
-        if not cleaned_data:
-            return {"count": 0, "rows": []}
-            
-        # 행별 분리
-        lines = cleaned_data.split('\n')
         parsed_rows = []
         total_cells_count = 0
         
-        for line in lines:
-            if not line.strip():
+        for row in reader:
+            if not row or all(not cell.strip() for cell in row):
                 continue
                 
-            cells = [c.strip() for c in line.split('\t')]
-            parsed_rows.append(cells)
-            total_cells_count += len(cells)
+            cleaned_row = [cell.strip() for cell in row]
+            parsed_rows.append(cleaned_row)
+            total_cells_count += len(cleaned_row)
             
         return {
             "count": total_cells_count,
