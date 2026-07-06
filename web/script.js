@@ -272,7 +272,7 @@ function renderTable() {
                 .replace(/'/g, "&#039;");
                 
             const cellClass = isColumnActive ? '' : 'col-disabled';
-            tableHtml += `<td class="${cellClass}" data-row="${rIdx}" data-col="${cIdx}" title="클릭 시 전체 보기">${escaped || '<span style="color: rgba(255,255,255,0.15); font-style: italic;">[빈 칸]</span>'}</td>`;
+            tableHtml += `<td class="${cellClass}" data-row="${rIdx}" data-col="${cIdx}" title="클릭 시 전체 보기"><div class="cell-content">${escaped || '<span style="color: rgba(255,255,255,0.15); font-style: italic;">[빈 칸]</span>'}</div></td>`;
         }
         tableHtml += '</tr>';
     });

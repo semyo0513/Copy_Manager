@@ -582,10 +582,14 @@ body {
     padding: 8px 10px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.03);
     color: #d1d5db;
-    white-space: normal;
-    word-break: break-all;
     min-width: 120px;
     max-width: 260px;
+    vertical-align: middle;
+}
+
+.preview-table td .cell-content {
+    white-space: normal;
+    word-break: break-all;
     line-height: 1.4;
     display: -webkit-box;
     -webkit-line-clamp: 3;
