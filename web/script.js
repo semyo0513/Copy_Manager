@@ -8,6 +8,7 @@ const delayValueEl = document.getElementById('delayValue');
 
 const clipboardStatusEl = document.getElementById('clipboardStatus');
 const clipboardDescEl = document.getElementById('clipboardDesc');
+const previewTableContainer = document.getElementById('previewTableContainer');
 
 const activeStatusContainer = document.getElementById('activeStatusContainer');
 const countdownNumEl = document.getElementById('countdownNum');
@@ -62,22 +63,64 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
-// 4. 클립보드 데이터 확인 요청
+// 4. 클립보드 데이터 확인 요청 및 표 렌더링
 async function checkClipboardData() {
     if (isMacroRunning) return;
     
     try {
         // 파이썬 백엔드로부터 파싱 결과 가져오기
         const data = await eel.get_clipboard_data()();
-        if (data && data.count > 0) {
-            clipboardDescEl.innerHTML = `총 <strong style="color: #00f2fe; font-size: 14px;">${data.count}개</strong>의 셀 데이터를 감지했습니다.<br><span style="font-size: 11px; opacity: 0.7;">(미리보기: ${data.preview})</span>`;
+        if (data && data.count > 0 && data.rows && data.rows.length > 0) {
+            const rowCount = data.rows.length;
+            clipboardDescEl.innerHTML = `총 <strong style="color: #00f2fe; font-size: 14px;">${rowCount}행 (총 ${data.count}개 셀)</strong>의 데이터를 감지했습니다.`;
+            
+            // 2차원 표 생성
+            let tableHtml = '<table class="preview-table">';
+            
+            // 헤더 생성
+            const colCount = data.rows[0].length;
+            tableHtml += '<thead><tr>';
+            for (let i = 1; i <= colCount; i++) {
+                tableHtml += `<th>열 ${i}</th>`;
+            }
+            tableHtml += '</tr></thead><tbody>';
+            
+            // 본문 생성 (최대 5개 행만)
+            const maxPreviewRows = 5;
+            const previewRows = data.rows.slice(0, maxPreviewRows);
+            
+            previewRows.forEach(row => {
+                tableHtml += '<tr>';
+                row.forEach(cell => {
+                    // 특수문자 이스케이프 및 내용 표시
+                    const escaped = cell
+                        .replace(/&/g, "&amp;")
+                        .replace(/</g, "&lt;")
+                        .replace(/>/g, "&gt;")
+                        .replace(/"/g, "&quot;")
+                        .replace(/'/g, "&#039;");
+                    tableHtml += `<td title="${escaped}">${escaped || '<span style="color: rgba(255,255,255,0.15)">[빈 칸]</span>'}</td>`;
+                });
+                tableHtml += '</tr>';
+            });
+            tableHtml += '</tbody></table>';
+            
+            // 더 많은 행에 대한 메시지
+            if (rowCount > maxPreviewRows) {
+                tableHtml += `<div class="preview-more-msg" style="display: block;">외 ${rowCount - maxPreviewRows}개 행의 데이터가 더 있습니다.</div>`;
+            }
+            
+            previewTableContainer.innerHTML = tableHtml;
+            previewTableContainer.style.display = 'block';
             btnStart.disabled = false;
         } else {
             clipboardDescEl.textContent = "클립보드에 복사된 엑셀 데이터가 없거나 올바르지 않습니다.";
+            previewTableContainer.innerHTML = '';
+            previewTableContainer.style.display = 'none';
             btnStart.disabled = true;
         }
     } catch (e) {
-        console.error("클립보드 조회 중 요류: ", e);
+        console.error("클립보드 조회 중 오류: ", e);
     }
 }
 

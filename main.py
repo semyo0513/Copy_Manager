@@ -25,44 +25,45 @@ else:
 @eel.expose
 def get_clipboard_data():
     """
-    클립보드에 복사된 텍스트 데이터를 분석하여 엑셀 셀 단위의 리스트로 파싱합니다.
+    클립보드에 복사된 텍스트 데이터를 분석하여 엑셀 2차원 표 구조로 파싱합니다.
     """
     global is_running
     if is_running:
-        return {"count": 0, "preview": "실행 중..."}
+        return {"count": 0, "rows": []}
         
     try:
         raw_data = pyperclip.paste()
         if not raw_data:
-            return {"count": 0, "preview": ""}
+            return {"count": 0, "rows": []}
             
-        # 문자열 정제 (맨 끝의 공백 및 개행 제거)
+        # 문자열 정제 (앞뒤 공백 및 개행 제거)
         cleaned_data = raw_data.strip('\r\n')
         if not cleaned_data:
-            return {"count": 0, "preview": ""}
+            return {"count": 0, "rows": []}
             
         # 행별 분리
-        rows = cleaned_data.split('\n')
-        all_cells = []
-        for r in rows:
-            r = r.replace('\r', '') # Windows 개행문자 잔여물 정제
-            cells = r.split('\t')  # 엑셀 열 구분자는 탭(\t)
-            for c in cells:
-                all_cells.append(c.strip())
+        lines = cleaned_data.split('\n')
+        parsed_rows = []
+        total_cells_count = 0
+        
+        for line in lines:
+            line = line.replace('\r', '') # Windows 개행문자 정제
+            # 완전히 빈 행은 패스하되, 공백으로 이루어진 행은 포함할 수도 있으나
+            # 엑셀 드래그 시 맨 하단 빈 행 등이 딸려오는 경우를 정제하기 위해 검사
+            if not line.strip():
+                continue
                 
-        # 미리보기 텍스트 생성 (실제 값 있는 셀만 콤마로 연결)
-        non_empty = [c for c in all_cells if c]
-        preview_text = ", ".join(non_empty[:5])
-        if len(non_empty) > 5:
-            preview_text += "..."
+            cells = [c.strip() for c in line.split('\t')]
+            parsed_rows.append(cells)
+            total_cells_count += len(cells)
             
         return {
-            "count": len(all_cells),
-            "preview": preview_text if preview_text else "빈 셀만 감지됨"
+            "count": total_cells_count,
+            "rows": parsed_rows
         }
     except Exception as e:
         print(f"클립보드 데이터 읽기 실패: {e}")
-        return {"count": 0, "preview": "오류 발생"}
+        return {"count": 0, "rows": []}
 
 @eel.expose
 def stop_macro():
@@ -198,9 +199,9 @@ if __name__ == '__main__':
     eel.init(web_dir)
     
     # Eel UI 시작 (창 모드 크기 및 크롬 앱 모드로 실행)
-    # --noconsole 빌드와 조화를 이루도록 브라우저 창을 420x620 크기로 고정합니다.
+    # --noconsole 빌드와 조화를 이루도록 브라우저 창을 420x680 크기로 조절합니다.
     try:
-        eel.start('index.html', size=(420, 620), port=0)
+        eel.start('index.html', size=(420, 680), port=0)
     except (SystemExit, MemoryError, KeyboardInterrupt):
         # 사용자 프로그램 종료 시 정상 처리
         pass
