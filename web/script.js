@@ -20,9 +20,27 @@ const btnStop = document.getElementById('btnStop');
 const progressBar = document.getElementById('progressBar');
 const toastContainer = document.getElementById('toastContainer');
 
+// 모달 DOM 캐싱
+const detailModal = document.getElementById('detailModal');
+const modalTitle = document.getElementById('modalTitle');
+const modalTextViewer = document.getElementById('modalTextViewer');
+const neisMockupTextarea = document.getElementById('neisMockupTextarea');
+const neisByteCount = document.getElementById('neisByteCount');
+const btnCloseModal = document.getElementById('btnCloseModal');
+
+// 전역 상태 변수
 let currentTabCount = 1;
 let currentDelay = 0.2;
 let isMacroRunning = false;
+
+let currentDataRows = []; // 가공 및 병합이 가능한 로컬 2차원 데이터 배열
+let activeColumns = [];   // 활성화된 열 인덱스 목록 (체크박스로 제어)
+
+// 드래그 선택 관련 상태 변수
+let isSelecting = false;
+let startCell = null; // { r, c }
+let endCell = null;   // { r, c }
+let mergeFloatBtn = null; // 플로팅 병합 버튼 엘리먼트
 
 // 1. 탭 스피너 제어 (바운스 효과 포함)
 function updateTabCount(val) {
@@ -44,7 +62,7 @@ delaySlider.addEventListener('input', (e) => {
     delayValueEl.textContent = `${currentDelay.toFixed(1)}초`;
 });
 
-// 3. 토스트 메시지 함수 노출
+// 3. 토스트 메시지 함수
 function showToast(message, type = 'success') {
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
@@ -56,67 +74,357 @@ function showToast(message, type = 'success') {
     toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${message}</span>`;
     toastContainer.appendChild(toast);
     
-    // 3초 후 자동 제거
     setTimeout(() => {
         toast.style.animation = 'fadeOut 0.3s ease forwards';
         setTimeout(() => toast.remove(), 300);
     }, 3000);
 }
 
-// 4. 클립보드 데이터 확인 요청 및 표 렌더링
+// 나이스 바이트 수 계산 함수 (한글 3바이트, 영문/공백 1바이트 기준)
+function getByteLength(str) {
+    let byteLength = 0;
+    for (let i = 0; i < str.length; i++) {
+        const charCode = str.charCodeAt(i);
+        if (charCode <= 0x7f) {
+            byteLength += 1;
+        } else if (charCode <= 0x7ff) {
+            byteLength += 2;
+        } else {
+            byteLength += 3; // 한글 3바이트 처리 (NEIS 시스템 표준)
+        }
+    }
+    return byteLength;
+}
+
+// 4. 모달 제어 함수
+function openModal(rowIdx, colIdx, cellValue) {
+    modalTitle.textContent = `[${rowIdx + 1}행, ${colIdx + 1}열] 데이터 상세 보기`;
+    modalTextViewer.textContent = cellValue || "(빈 칸)";
+    neisMockupTextarea.textContent = cellValue || "";
+    
+    // 바이트 카운팅 갱신
+    const bytes = getByteLength(cellValue || "");
+    neisByteCount.textContent = bytes;
+    
+    detailModal.classList.add('active');
+}
+
+function closeModal() {
+    detailModal.classList.remove('active');
+}
+
+btnCloseModal.addEventListener('click', closeModal);
+detailModal.addEventListener('click', (e) => {
+    if (e.target === detailModal) closeModal();
+});
+
+// ESC 키를 누르면 모달 닫기
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && detailModal.classList.contains('active')) {
+        closeModal();
+    }
+});
+
+// 5. 플로팅 병합 버튼 생성 및 초기화
+function initMergeFloatBtn() {
+    if (mergeFloatBtn) return;
+    
+    mergeFloatBtn = document.createElement('button');
+    mergeFloatBtn.type = 'button';
+    mergeFloatBtn.className = 'btn-merge-float';
+    mergeFloatBtn.innerHTML = '<i class="fa-solid fa-code-merge"></i> 선택 셀 가로 병합';
+    
+    // 앱 컨테이너 내부에 상대 위치로 배치하기 위해 추가
+    document.querySelector('.app-container').appendChild(mergeFloatBtn);
+    
+    mergeFloatBtn.addEventListener('click', executeMerge);
+}
+
+// 6. 가로 셀 병합 실행
+function executeMerge() {
+    if (!startCell || !endCell) return;
+    
+    const r = startCell.r;
+    const minCol = Math.min(startCell.c, endCell.c);
+    const maxCol = Math.max(startCell.c, endCell.c);
+    
+    // 선택 영역 데이터 추출 및 병합 (구분자: 한 칸 공백)
+    const rowData = currentDataRows[r];
+    const cellsToMerge = [];
+    for (let c = minCol; c <= maxCol; c++) {
+        if (rowData[c]) cellsToMerge.push(rowData[c]);
+    }
+    
+    const mergedText = cellsToMerge.join(' ');
+    
+    // 첫 번째 셀에 병합 텍스트 반영 및 나머지 셀 비우기
+    currentDataRows[r][minCol] = mergedText;
+    for (let c = minCol + 1; c <= maxCol; c++) {
+        currentDataRows[r][c] = '';
+    }
+    
+    showToast(`${r + 1}행의 셀들이 정상 병합되었습니다.`, 'success');
+    
+    // 상태 초기화 및 갱신
+    hideMergeFloatBtn();
+    renderTable();
+}
+
+function hideMergeFloatBtn() {
+    if (mergeFloatBtn) {
+        mergeFloatBtn.style.display = 'none';
+    }
+    document.querySelectorAll('.preview-table td').forEach(td => {
+        td.classList.remove('cell-selecting', 'cell-selected');
+    });
+    startCell = null;
+    endCell = null;
+}
+
+// 7. 테이블 렌더링 함수
+function renderTable() {
+    if (!currentDataRows || currentDataRows.length === 0) {
+        previewTableContainer.style.display = 'none';
+        previewTableContainer.innerHTML = '';
+        btnStart.disabled = true;
+        
+        // 체크박스 헤더 영역 숨기기
+        const cbHeader = document.getElementById('colCheckboxHeader');
+        if (cbHeader) cbHeader.style.display = 'none';
+        return;
+    }
+    
+    // 열 개수 분석
+    const colCount = currentDataRows[0].length;
+    
+    // 7.1. 열 체크박스 헤더 생성 및 동적 주입
+    let cbHeader = document.getElementById('colCheckboxHeader');
+    if (!cbHeader) {
+        cbHeader = document.createElement('div');
+        cbHeader.id = 'colCheckboxHeader';
+        cbHeader.className = 'col-checkbox-header';
+        previewTableContainer.parentNode.insertBefore(cbHeader, previewTableContainer);
+    }
+    
+    // 기존 체크박스 내용 비우고 새로 채우기
+    cbHeader.innerHTML = '<span style="font-weight: 700; color: var(--neon-blue); margin-right: 4px;">복사할 열 선택:</span>';
+    cbHeader.style.display = 'flex';
+    
+    for (let i = 0; i < colCount; i++) {
+        const isChecked = activeColumns.includes(i);
+        const item = document.createElement('label');
+        item.className = 'col-checkbox-item';
+        item.innerHTML = `<input type="checkbox" data-col-idx="${i}" ${isChecked ? 'checked' : ''}> 열 ${i + 1}`;
+        
+        // 체크박스 클릭 이벤트 바인딩
+        item.querySelector('input').addEventListener('change', (e) => {
+            const idx = parseInt(e.target.dataset.colIdx);
+            if (e.target.checked) {
+                if (!activeColumns.includes(idx)) activeColumns.push(idx);
+            } else {
+                activeColumns = activeColumns.filter(c => c !== idx);
+            }
+            // 테이블을 다시 그려 활성/비활성 클래스를 갱신함
+            renderTable();
+        });
+        
+        cbHeader.appendChild(item);
+    }
+    
+    // 7.2. HTML Table 드로잉
+    let tableHtml = '<table class="preview-table">';
+    
+    // 헤더 행 생성
+    tableHtml += '<thead><tr>';
+    for (let i = 0; i < colCount; i++) {
+        const isColumnActive = activeColumns.includes(i);
+        tableHtml += `<th class="${isColumnActive ? '' : 'col-disabled'}">열 ${i + 1}</th>`;
+    }
+    tableHtml += '</tr></thead><tbody>';
+    
+    // 데이터 행 생성 (최대 5개 행만 렌더링)
+    const maxPreviewRows = 5;
+    const previewRows = currentDataRows.slice(0, maxPreviewRows);
+    
+    previewRows.forEach((row, rIdx) => {
+        tableHtml += '<tr>';
+        for (let cIdx = 0; cIdx < colCount; cIdx++) {
+            const isColumnActive = activeColumns.includes(cIdx);
+            const val = row[cIdx] !== undefined ? row[cIdx] : '';
+            
+            // 특수문자 이스케이프
+            const escaped = val
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+                
+            const cellClass = isColumnActive ? '' : 'col-disabled';
+            tableHtml += `<td class="${cellClass}" data-row="${rIdx}" data-col="${cIdx}" title="클릭 시 상세 보기">${escaped || '<span style="color: rgba(255,255,255,0.15); font-style: italic;">[빈 칸]</span>'}</td>`;
+        }
+        tableHtml += '</tr>';
+    });
+    tableHtml += '</tbody></table>';
+    
+    // 초과행 축약 안내 추가
+    if (currentDataRows.length > maxPreviewRows) {
+        tableHtml += `<div class="preview-more-msg" style="display: block;">외 ${currentDataRows.length - maxPreviewRows}개 행의 데이터가 더 있습니다. (드래그 병합은 위 미리보기 내에서만 가능합니다.)</div>`;
+    }
+    
+    previewTableContainer.innerHTML = tableHtml;
+    previewTableContainer.style.display = 'block';
+    
+    // 7.3. 드래그 및 클릭 상호작용 이벤트 바인딩
+    const cells = previewTableContainer.querySelectorAll('.preview-table td');
+    cells.forEach(cell => {
+        const r = parseInt(cell.dataset.row);
+        const c = parseInt(cell.dataset.col);
+        
+        // 마우스 다운: 선택 시작
+        cell.addEventListener('mousedown', (e) => {
+            // 좌클릭인 경우만 드래그 시작
+            if (e.button !== 0) return;
+            
+            // 비활성화된 열은 드래그 병합 제외
+            if (!activeColumns.includes(c)) return;
+            
+            isSelecting = true;
+            startCell = { r, c };
+            endCell = { r, c };
+            
+            // 기존 하이라이트 지우기 및 플로팅 단추 숨기기
+            hideMergeFloatBtn();
+            startCell = { r, c }; // 위의 hide 함수가 초기화하므로 다시 설정
+            cell.classList.add('cell-selecting');
+        });
+        
+        // 마우스 오버: 드래그 영역 계산
+        cell.addEventListener('mouseenter', () => {
+            if (!isSelecting || !startCell) return;
+            
+            // 동일한 행 내부의 가로 병합만 지원
+            if (startCell.r !== r) return;
+            
+            // 비활성화된 열은 드래그 영역에서 제외
+            if (!activeColumns.includes(c)) return;
+            
+            endCell = { r, c };
+            
+            // 하이라이트 클래스 갱신
+            const minCol = Math.min(startCell.c, endCell.c);
+            const maxCol = Math.max(startCell.c, endCell.c);
+            
+            cells.forEach(td => {
+                const tdR = parseInt(td.dataset.row);
+                const tdC = parseInt(td.dataset.col);
+                if (tdR === r && tdC >= minCol && tdC <= maxCol) {
+                    td.classList.add('cell-selecting');
+                } else {
+                    td.classList.remove('cell-selecting');
+                }
+            });
+        });
+    });
+    
+    // 버튼 상태 업데이트
+    const activeCellCount = currentDataRows.reduce((acc, row) => {
+        return acc + row.filter((_, idx) => activeColumns.includes(idx)).length;
+    }, 0);
+    
+    if (activeCellCount > 0) {
+        clipboardDescEl.innerHTML = `총 <strong style="color: #00f2fe; font-size: 14px;">${currentDataRows.length}행 (입력 대상: ${activeCellCount}개 셀)</strong>의 데이터를 감지했습니다.`;
+        btnStart.disabled = false;
+    } else {
+        clipboardDescEl.innerHTML = `총 <strong style="color: #ff0844; font-size: 14px;">${currentDataRows.length}행 (선택된 열 없음)</strong><br><span style="font-size: 11px; opacity: 0.7;">입력할 열 체크박스를 선택해 주세요.</span>`;
+        btnStart.disabled = true;
+    }
+}
+
+// 8. 마우스 업 전역 리스너: 선택 종료 및 플로팅 버튼 팝업
+window.addEventListener('mouseup', (e) => {
+    if (!isSelecting) return;
+    isSelecting = false;
+    
+    if (startCell && endCell) {
+        const r = startCell.r;
+        const minCol = Math.min(startCell.c, endCell.c);
+        const maxCol = Math.max(startCell.c, endCell.c);
+        
+        // 단일 셀 클릭인 경우 ➔ 상세 팝업 오픈
+        if (minCol === maxCol) {
+            const cellValue = currentDataRows[r][minCol];
+            openModal(r, minCol, cellValue);
+            hideMergeFloatBtn();
+            return;
+        }
+        
+        // 다중 셀 가로 드래그 범위 확정 ➔ 플로팅 병합 단추 배치
+        const cells = previewTableContainer.querySelectorAll('.preview-table td');
+        let lastSelectedCell = null;
+        
+        cells.forEach(td => {
+            const tdR = parseInt(td.dataset.row);
+            const tdC = parseInt(td.dataset.col);
+            if (tdR === r && tdC >= minCol && tdC <= maxCol) {
+                td.classList.remove('cell-selecting');
+                td.classList.add('cell-selected');
+                if (tdC === maxCol) {
+                    lastSelectedCell = td;
+                }
+            }
+        });
+        
+        if (lastSelectedCell && mergeFloatBtn) {
+            const rect = lastSelectedCell.getBoundingClientRect();
+            const appRect = document.querySelector('.app-container').getBoundingClientRect();
+            
+            // 상대 좌표 연산하여 버튼 띄우기
+            mergeFloatBtn.style.top = `${rect.top - appRect.top + window.scrollY}px`;
+            mergeFloatBtn.style.left = `${rect.left - appRect.left + (rect.width / 2) + window.scrollX}px`;
+            mergeFloatBtn.style.display = 'block';
+        }
+    }
+});
+
+// 화면 바깥 아무 영역이나 누르면 드래그 선택이 풀리도록 설정
+document.addEventListener('mousedown', (e) => {
+    if (mergeFloatBtn && e.target !== mergeFloatBtn && !previewTableContainer.contains(e.target)) {
+        hideMergeFloatBtn();
+    }
+});
+
+// 9. 클립보드 데이터 확인 요청
 async function checkClipboardData() {
     if (isMacroRunning) return;
     
     try {
-        // 파이썬 백엔드로부터 파싱 결과 가져오기
         const data = await eel.get_clipboard_data()();
         if (data && data.count > 0 && data.rows && data.rows.length > 0) {
-            const rowCount = data.rows.length;
-            clipboardDescEl.innerHTML = `총 <strong style="color: #00f2fe; font-size: 14px;">${rowCount}행 (총 ${data.count}개 셀)</strong>의 데이터를 감지했습니다.`;
+            // 신규 데이터가 유입되었거나 데이터 개수가 다른 경우에만 테이블 새로 고침
+            // (동일한 데이터의 반복 렌더링으로 사용자의 병합 수정본이 날아가는 것을 방지하기 위함)
+            const isSameData = JSON.stringify(data.rows) === JSON.stringify(currentDataRows);
             
-            // 2차원 표 생성
-            let tableHtml = '<table class="preview-table">';
-            
-            // 헤더 생성
-            const colCount = data.rows[0].length;
-            tableHtml += '<thead><tr>';
-            for (let i = 1; i <= colCount; i++) {
-                tableHtml += `<th>열 ${i}</th>`;
+            if (!isSameData) {
+                currentDataRows = data.rows;
+                
+                // 열 활성화 상태 초기화 (기본값: 모든 열 선택)
+                const colCount = currentDataRows[0].length;
+                activeColumns = [];
+                for (let i = 0; i < colCount; i++) {
+                    activeColumns.push(i);
+                }
+                
+                renderTable();
             }
-            tableHtml += '</tr></thead><tbody>';
-            
-            // 본문 생성 (최대 5개 행만)
-            const maxPreviewRows = 5;
-            const previewRows = data.rows.slice(0, maxPreviewRows);
-            
-            previewRows.forEach(row => {
-                tableHtml += '<tr>';
-                row.forEach(cell => {
-                    // 특수문자 이스케이프 및 내용 표시
-                    const escaped = cell
-                        .replace(/&/g, "&amp;")
-                        .replace(/</g, "&lt;")
-                        .replace(/>/g, "&gt;")
-                        .replace(/"/g, "&quot;")
-                        .replace(/'/g, "&#039;");
-                    tableHtml += `<td title="${escaped}">${escaped || '<span style="color: rgba(255,255,255,0.15)">[빈 칸]</span>'}</td>`;
-                });
-                tableHtml += '</tr>';
-            });
-            tableHtml += '</tbody></table>';
-            
-            // 더 많은 행에 대한 메시지
-            if (rowCount > maxPreviewRows) {
-                tableHtml += `<div class="preview-more-msg" style="display: block;">외 ${rowCount - maxPreviewRows}개 행의 데이터가 더 있습니다.</div>`;
-            }
-            
-            previewTableContainer.innerHTML = tableHtml;
-            previewTableContainer.style.display = 'block';
-            btnStart.disabled = false;
         } else {
+            // 클립보드가 비었을 때
+            if (currentDataRows.length > 0) {
+                currentDataRows = [];
+                activeColumns = [];
+                renderTable();
+            }
             clipboardDescEl.textContent = "클립보드에 복사된 엑셀 데이터가 없거나 올바르지 않습니다.";
-            previewTableContainer.innerHTML = '';
-            previewTableContainer.style.display = 'none';
             btnStart.disabled = true;
         }
     } catch (e) {
@@ -124,26 +432,32 @@ async function checkClipboardData() {
     }
 }
 
-// 앱 포커스가 들어올 때 실시간 클립보드 체크
+// 10. 앱 로딩 시 초기화
 window.addEventListener('focus', checkClipboardData);
-// 초기 로드 시 1회 감시 시작
-setTimeout(checkClipboardData, 500);
-// 주기적인 감지 (1.5초 주기)
+setTimeout(() => {
+    checkClipboardData();
+    initMergeFloatBtn();
+}, 500);
+
+// 주기적인 감시 (1.5초 주기)
 setInterval(checkClipboardData, 1500);
 
-// 5. 실행 및 정지 제어
+// 11. 실행 및 정지 제어
 btnStart.addEventListener('click', () => {
     if (isMacroRunning) return;
     
-    // 파이썬 매크로 시작 함수 호출
-    eel.start_macro(currentTabCount, currentDelay);
+    // 사용자가 체크한 활성 열 인덱스들
+    const activeColsToSend = [...activeColumns].sort((a, b) => a - b);
+    
+    // 가공이 완료된 로컬 2차원 데이터 배열과 활성 열 목록을 백엔드로 직접 넘깁니다.
+    eel.start_macro(currentTabCount, currentDelay, currentDataRows, activeColsToSend);
 });
 
 btnStop.addEventListener('click', () => {
     eel.stop_macro();
 });
 
-// 백엔드 호출 노출 함수들
+// 백엔드 통신 노출 API 함수들
 eel.expose(show_toast);
 function show_toast(message, type) {
     showToast(message, type);
@@ -154,7 +468,6 @@ function set_running_state(isRunning) {
     isMacroRunning = isRunning;
     
     if (isRunning) {
-        // UI 모드 전환 (입력 감지 비활성화, 진행 창 표시)
         btnStart.disabled = true;
         btnStart.classList.remove('btn-pulse');
         btnStop.disabled = false;
@@ -162,11 +475,14 @@ function set_running_state(isRunning) {
         btnPlus.disabled = true;
         delaySlider.disabled = true;
         
+        // 체크박스 헤더 영역 숨기기
+        const cbHeader = document.getElementById('colCheckboxHeader');
+        if (cbHeader) cbHeader.style.display = 'none';
+        
         clipboardStatusEl.style.display = 'none';
         activeStatusContainer.style.display = 'flex';
         progressBar.style.width = '0%';
     } else {
-        // 일반 대기 모드로 원복
         btnStart.disabled = false;
         btnStart.classList.add('btn-pulse');
         btnStop.disabled = true;
@@ -177,21 +493,18 @@ function set_running_state(isRunning) {
         clipboardStatusEl.style.display = 'flex';
         activeStatusContainer.style.display = 'none';
         
-        // 지연 후 클립보드 최신화
+        // 원복 후 클립보드 데이터 새로고침
         setTimeout(checkClipboardData, 500);
     }
 }
 
 eel.expose(update_status);
 function update_status(current, total, statusText) {
-    // 텍스트 메시지 업데이트
     statusTextMsgEl.textContent = statusText;
     
-    // 카운트다운 표시
     countdownNumEl.textContent = current;
     countdownTotalEl.textContent = `/ ${total}`;
     
-    // 프로그레스 바 갱신
     if (total > 0) {
         const percentage = (current / total) * 100;
         progressBar.style.width = `${percentage}%`;

@@ -100,6 +100,33 @@
     <!-- 토스트 알림 컨테이너 -->
     <div class="toast-container" id="toastContainer"></div>
 
+    <!-- 상세 보기 및 나이스 시뮬레이터 모달 -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2 id="modalTitle">셀 상세 보기</h2>
+                <button type="button" class="btn-close-modal" id="btnCloseModal" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
+            </header>
+            <div class="modal-body">
+                <!-- 큰 글씨 텍스트 뷰어 -->
+                <div class="modal-text-viewer" id="modalTextViewer"></div>
+                
+                <!-- 나이스 입력 폼 시뮬레이션 -->
+                <div class="neis-mockup">
+                    <div class="neis-mockup-header">
+                        <span><i class="fa-solid fa-graduation-cap"></i> 생활기록부 세부능력 및 특기사항 입력 시뮬레이션</span>
+                    </div>
+                    <div class="neis-mockup-textarea-wrapper">
+                        <div class="neis-mockup-textarea" id="neisMockupTextarea"></div>
+                        <div class="neis-mockup-footer">
+                            <span class="neis-bytes-count"><strong id="neisByteCount">0</strong> / 1500 Byte (한글 약 500자)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Eel 브릿지 스크립트 (빌드 후 Eel이 자동 매핑) -->
     <script type="text/javascript" src="/eel.js"></script>
     <script src="script.js"></script>

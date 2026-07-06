@@ -76,9 +76,9 @@ def stop_macro():
         print("매크로 중지 요청됨")
 
 @eel.expose
-def start_macro(tab_count, delay):
+def start_macro(tab_count, delay, data_rows, active_columns):
     """
-    새로운 스레드에서 자동 입력 매크로를 실행합니다.
+    새로운 스레드에서 가공된 데이터 배열을 바탕으로 자동 입력 매크로를 실행합니다.
     """
     global is_running, macro_thread
     if is_running:
@@ -87,7 +87,7 @@ def start_macro(tab_count, delay):
     is_running = True
     macro_thread = threading.Thread(
         target=run_automation_loop, 
-        args=(tab_count, delay), 
+        args=(tab_count, delay, data_rows, active_columns), 
         daemon=True
     )
     macro_thread.start()
@@ -105,7 +105,7 @@ def interruptible_sleep(duration):
         time.sleep(0.05)
     return True
 
-def run_automation_loop(tab_count, delay):
+def run_automation_loop(tab_count, delay, data_rows, active_columns):
     """
     실제 자동 입력 루프가 동작하는 코어 로직입니다.
     """
@@ -113,30 +113,32 @@ def run_automation_loop(tab_count, delay):
     eel.set_running_state(True)()
     
     try:
-        # 1. 클립보드 원본 데이터 로드 및 분리
-        raw_data = pyperclip.paste().strip('\r\n')
-        if not raw_data:
-            eel.show_toast("입력할 클립보드 데이터가 비어있습니다.", "error")()
+        if not data_rows or not active_columns:
+            eel.show_toast("입력할 데이터가 없거나 활성화된 열이 없습니다.", "error")()
             is_running = False
             eel.set_running_state(False)()
             return
             
-        rows = raw_data.split('\n')
+        # 1. 활성화된 열의 데이터만 추출하여 1차원 입력 큐 구성
         items = []
-        for r in rows:
-            r = r.replace('\r', '')
-            cells = r.split('\t')
-            for c in cells:
-                items.append(c.strip())
-                
+        for row in data_rows:
+            for col_idx in active_columns:
+                if col_idx < len(row):
+                    items.append(row[col_idx])
+                    
         total_count = len(items)
+        if total_count == 0:
+            eel.show_toast("입력할 데이터 항목이 없습니다.", "warning")()
+            is_running = False
+            eel.set_running_state(False)()
+            return
         
         # 2. 카운트다운 시작 대기 (3초)
         for i in range(3, 0, -1):
             if not is_running or keyboard.is_pressed('esc') or keyboard.is_pressed('f12'):
                 is_running = False
                 break
-            eel.update_status(0, total_count, f"{i}초 뒤에 입력이 시작됩니다. 입력 창을 활성화하세요!")()
+            eel.update_status(0, total_count, f"{i}초 뒤에 입력이 시작됩니다. 첫 번째 입력 창을 클릭해 두세요!")()
             time.sleep(1)
             
         # 3. 셀 단위 순차 입력
@@ -145,9 +147,11 @@ def run_automation_loop(tab_count, delay):
                 is_running = False
                 break
                 
-            eel.update_status(idx + 1, total_count, f"'{item}' 입력 중...")()
+            # 미리보기 텍스트 축약 표시
+            display_val = item[:15] + "..." if len(item) > 15 else item
+            eel.update_status(idx + 1, total_count, f"'{display_val}' 입력 중...")()
             
-            # 클립보드로 문자 이동 (한글 호환성 극대화)
+            # 클립보드로 문자 복사
             pyperclip.copy(item)
             time.sleep(0.05)
             
