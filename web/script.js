@@ -35,12 +35,14 @@ let isMacroRunning = false;
 
 let currentDataRows = []; // 가공 및 병합이 가능한 로컬 2차원 데이터 배열
 let activeColumns = [];   // 활성화된 열 인덱스 목록 (체크박스로 제어)
+let isMergeModeActive = false; // 선택 열 일괄 병합 모드 여부
 
 // 드래그 선택 관련 상태 변수
 let isSelecting = false;
 let startCell = null; // { r, c }
 let endCell = null;   // { r, c }
 let mergeFloatBtn = null; // 플로팅 병합 버튼 엘리먼트
+let mouseDownPos = { x: 0, y: 0 }; // 마우스 드래그 오작동 방지용 좌표
 
 // 1. 탭 스피너 제어 (바운스 효과 포함)
 function updateTabCount(val) {
@@ -98,7 +100,7 @@ function getByteLength(str) {
 
 // 4. 모달 제어 함수
 function openModal(rowIdx, colIdx, cellValue) {
-    modalTitle.textContent = `[${rowIdx + 1}행, ${colIdx + 1}열] 데이터 상세 보기`;
+    modalTitle.textContent = `[${rowIdx + 1}행, ${colIdx + 1}열] 데이터 전체 보기`;
     modalTextViewer.textContent = cellValue || "(빈 칸)";
     neisMockupTextarea.textContent = cellValue || "";
     
@@ -134,9 +136,7 @@ function initMergeFloatBtn() {
     mergeFloatBtn.className = 'btn-merge-float';
     mergeFloatBtn.innerHTML = '<i class="fa-solid fa-code-merge"></i> 선택 셀 가로 병합';
     
-    // 앱 컨테이너 내부에 상대 위치로 배치하기 위해 추가
     document.querySelector('.app-container').appendChild(mergeFloatBtn);
-    
     mergeFloatBtn.addEventListener('click', executeMerge);
 }
 
@@ -188,7 +188,6 @@ function renderTable() {
         previewTableContainer.innerHTML = '';
         btnStart.disabled = true;
         
-        // 체크박스 헤더 영역 숨기기
         const cbHeader = document.getElementById('colCheckboxHeader');
         if (cbHeader) cbHeader.style.display = 'none';
         return;
@@ -216,7 +215,6 @@ function renderTable() {
         item.className = 'col-checkbox-item';
         item.innerHTML = `<input type="checkbox" data-col-idx="${i}" ${isChecked ? 'checked' : ''}> 열 ${i + 1}`;
         
-        // 체크박스 클릭 이벤트 바인딩
         item.querySelector('input').addEventListener('change', (e) => {
             const idx = parseInt(e.target.dataset.colIdx);
             if (e.target.checked) {
@@ -224,17 +222,31 @@ function renderTable() {
             } else {
                 activeColumns = activeColumns.filter(c => c !== idx);
             }
-            // 테이블을 다시 그려 활성/비활성 클래스를 갱신함
             renderTable();
         });
-        
         cbHeader.appendChild(item);
     }
+    
+    // [신규] '선택 열 일괄 병합 입력' 스위치 토글 추가
+    const mergeSwitch = document.createElement('label');
+    mergeSwitch.className = 'col-checkbox-item';
+    mergeSwitch.style.marginLeft = 'auto'; // 우측 끝 정렬
+    mergeSwitch.innerHTML = `<input type="checkbox" id="mergeModeCheckbox" ${isMergeModeActive ? 'checked' : ''}> <span style="color: var(--neon-pink); font-weight: 700;"><i class="fa-solid fa-compress"></i> 선택 열 병합 입력</span>`;
+    
+    mergeSwitch.querySelector('input').addEventListener('change', (e) => {
+        isMergeModeActive = e.target.checked;
+        if (isMergeModeActive) {
+            showToast("선택된 열들을 하나로 묶어(줄바꿈 연결) 입력하는 모드가 활성화되었습니다.", "warning");
+        } else {
+            showToast("열 병합 입력 모드가 비활성화되었습니다. 각 열별로 순차 입력됩니다.", "success");
+        }
+        renderTable();
+    });
+    cbHeader.appendChild(mergeSwitch);
     
     // 7.2. HTML Table 드로잉
     let tableHtml = '<table class="preview-table">';
     
-    // 헤더 행 생성
     tableHtml += '<thead><tr>';
     for (let i = 0; i < colCount; i++) {
         const isColumnActive = activeColumns.includes(i);
@@ -242,7 +254,6 @@ function renderTable() {
     }
     tableHtml += '</tr></thead><tbody>';
     
-    // 데이터 행 생성 (최대 5개 행만 렌더링)
     const maxPreviewRows = 5;
     const previewRows = currentDataRows.slice(0, maxPreviewRows);
     
@@ -261,15 +272,14 @@ function renderTable() {
                 .replace(/'/g, "&#039;");
                 
             const cellClass = isColumnActive ? '' : 'col-disabled';
-            tableHtml += `<td class="${cellClass}" data-row="${rIdx}" data-col="${cIdx}" title="클릭 시 상세 보기">${escaped || '<span style="color: rgba(255,255,255,0.15); font-style: italic;">[빈 칸]</span>'}</td>`;
+            tableHtml += `<td class="${cellClass}" data-row="${rIdx}" data-col="${cIdx}" title="클릭 시 전체 보기">${escaped || '<span style="color: rgba(255,255,255,0.15); font-style: italic;">[빈 칸]</span>'}</td>`;
         }
         tableHtml += '</tr>';
     });
     tableHtml += '</tbody></table>';
     
-    // 초과행 축약 안내 추가
     if (currentDataRows.length > maxPreviewRows) {
-        tableHtml += `<div class="preview-more-msg" style="display: block;">외 ${currentDataRows.length - maxPreviewRows}개 행의 데이터가 더 있습니다. (드래그 병합은 위 미리보기 내에서만 가능합니다.)</div>`;
+        tableHtml += `<div class="preview-more-msg" style="display: block;">외 ${currentDataRows.length - maxPreviewRows}개 행의 데이터가 더 있습니다. (표 안에서 가로 드래그 병합 및 셀 클릭 전체 보기가 가능합니다.)</div>`;
     }
     
     previewTableContainer.innerHTML = tableHtml;
@@ -281,37 +291,29 @@ function renderTable() {
         const r = parseInt(cell.dataset.row);
         const c = parseInt(cell.dataset.col);
         
-        // 마우스 다운: 선택 시작
+        // 7.3.1. 드래그 시작 감지
         cell.addEventListener('mousedown', (e) => {
-            // 좌클릭인 경우만 드래그 시작
-            if (e.button !== 0) return;
-            
-            // 비활성화된 열은 드래그 병합 제외
-            if (!activeColumns.includes(c)) return;
+            if (e.button !== 0) return; // 좌클릭만
+            if (!activeColumns.includes(c)) return; // 비활성화 열 제외
             
             isSelecting = true;
             startCell = { r, c };
             endCell = { r, c };
+            mouseDownPos = { x: e.clientX, y: e.clientY }; // 다운 시 좌표 저장
             
-            // 기존 하이라이트 지우기 및 플로팅 단추 숨기기
             hideMergeFloatBtn();
-            startCell = { r, c }; // 위의 hide 함수가 초기화하므로 다시 설정
+            startCell = { r, c }; // hide 함수가 날려버리므로 다시 지정
             cell.classList.add('cell-selecting');
         });
         
-        // 마우스 오버: 드래그 영역 계산
+        // 7.3.2. 드래그 이동 감지
         cell.addEventListener('mouseenter', () => {
             if (!isSelecting || !startCell) return;
-            
-            // 동일한 행 내부의 가로 병합만 지원
-            if (startCell.r !== r) return;
-            
-            // 비활성화된 열은 드래그 영역에서 제외
-            if (!activeColumns.includes(c)) return;
+            if (startCell.r !== r) return; // 동일 행 가로 병합만
+            if (!activeColumns.includes(c)) return; // 비활성화 열 제외
             
             endCell = { r, c };
             
-            // 하이라이트 클래스 갱신
             const minCol = Math.min(startCell.c, endCell.c);
             const maxCol = Math.max(startCell.c, endCell.c);
             
@@ -325,15 +327,31 @@ function renderTable() {
                 }
             });
         });
+        
+        // 7.3.3. 단일 클릭 팝업 연동 (드래그와 엉키지 않도록 오프셋 감지)
+        cell.addEventListener('click', (e) => {
+            const distance = Math.sqrt(Math.pow(e.clientX - mouseDownPos.x, 2) + Math.pow(e.clientY - mouseDownPos.y, 2));
+            // 마우스 이동 거리가 5픽셀 미만인 단순 클릭 상황에서만 모달 오픈
+            if (distance < 5) {
+                const cellValue = currentDataRows[r][c];
+                openModal(r, c, cellValue);
+                hideMergeFloatBtn();
+            }
+        });
     });
     
-    // 버튼 상태 업데이트
+    // 7.4. 감지 건수 및 버튼 활성화 갱신
     const activeCellCount = currentDataRows.reduce((acc, row) => {
         return acc + row.filter((_, idx) => activeColumns.includes(idx)).length;
     }, 0);
     
     if (activeCellCount > 0) {
-        clipboardDescEl.innerHTML = `총 <strong style="color: #00f2fe; font-size: 14px;">${currentDataRows.length}행 (입력 대상: ${activeCellCount}개 셀)</strong>의 데이터를 감지했습니다.`;
+        if (isMergeModeActive) {
+            // 병합 입력 시, 입력 총 횟수는 셀 개수가 아니라 '행(Student) 개수'와 같음
+            clipboardDescEl.innerHTML = `총 <strong style="color: #00f2fe; font-size: 14px;">${currentDataRows.length}행 (병합 입력 대상: ${currentDataRows.length}회)</strong>의 데이터를 감지했습니다.`;
+        } else {
+            clipboardDescEl.innerHTML = `총 <strong style="color: #00f2fe; font-size: 14px;">${currentDataRows.length}행 (일반 입력 대상: ${activeCellCount}개 셀)</strong>의 데이터를 감지했습니다.`;
+        }
         btnStart.disabled = false;
     } else {
         clipboardDescEl.innerHTML = `총 <strong style="color: #ff0844; font-size: 14px;">${currentDataRows.length}행 (선택된 열 없음)</strong><br><span style="font-size: 11px; opacity: 0.7;">입력할 열 체크박스를 선택해 주세요.</span>`;
@@ -341,7 +359,7 @@ function renderTable() {
     }
 }
 
-// 8. 마우스 업 전역 리스너: 선택 종료 및 플로팅 버튼 팝업
+// 8. 마우스 업 전역 리스너: 드래그 다중 범위 확정 시 병합 단추 노출
 window.addEventListener('mouseup', (e) => {
     if (!isSelecting) return;
     isSelecting = false;
@@ -351,15 +369,12 @@ window.addEventListener('mouseup', (e) => {
         const minCol = Math.min(startCell.c, endCell.c);
         const maxCol = Math.max(startCell.c, endCell.c);
         
-        // 단일 셀 클릭인 경우 ➔ 상세 팝업 오픈
+        // 단일 클릭인 경우는 클릭 리스너(distance 감지)에서 안전하게 모달을 띄우므로 여기선 무시
         if (minCol === maxCol) {
-            const cellValue = currentDataRows[r][minCol];
-            openModal(r, minCol, cellValue);
-            hideMergeFloatBtn();
             return;
         }
         
-        // 다중 셀 가로 드래그 범위 확정 ➔ 플로팅 병합 단추 배치
+        // 다중 셀 선택 완료 ➔ 플로팅 병합 버튼 배치
         const cells = previewTableContainer.querySelectorAll('.preview-table td');
         let lastSelectedCell = null;
         
@@ -379,7 +394,6 @@ window.addEventListener('mouseup', (e) => {
             const rect = lastSelectedCell.getBoundingClientRect();
             const appRect = document.querySelector('.app-container').getBoundingClientRect();
             
-            // 상대 좌표 연산하여 버튼 띄우기
             mergeFloatBtn.style.top = `${rect.top - appRect.top + window.scrollY}px`;
             mergeFloatBtn.style.left = `${rect.left - appRect.left + (rect.width / 2) + window.scrollX}px`;
             mergeFloatBtn.style.display = 'block';
@@ -387,7 +401,7 @@ window.addEventListener('mouseup', (e) => {
     }
 });
 
-// 화면 바깥 아무 영역이나 누르면 드래그 선택이 풀리도록 설정
+// 외부 영역 클릭 시 병합 선택 취소
 document.addEventListener('mousedown', (e) => {
     if (mergeFloatBtn && e.target !== mergeFloatBtn && !previewTableContainer.contains(e.target)) {
         hideMergeFloatBtn();
@@ -401,14 +415,12 @@ async function checkClipboardData() {
     try {
         const data = await eel.get_clipboard_data()();
         if (data && data.count > 0 && data.rows && data.rows.length > 0) {
-            // 신규 데이터가 유입되었거나 데이터 개수가 다른 경우에만 테이블 새로 고침
-            // (동일한 데이터의 반복 렌더링으로 사용자의 병합 수정본이 날아가는 것을 방지하기 위함)
             const isSameData = JSON.stringify(data.rows) === JSON.stringify(currentDataRows);
             
             if (!isSameData) {
                 currentDataRows = data.rows;
                 
-                // 열 활성화 상태 초기화 (기본값: 모든 열 선택)
+                // 열 활성화 상태 초기화
                 const colCount = currentDataRows[0].length;
                 activeColumns = [];
                 for (let i = 0; i < colCount; i++) {
@@ -418,7 +430,6 @@ async function checkClipboardData() {
                 renderTable();
             }
         } else {
-            // 클립보드가 비었을 때
             if (currentDataRows.length > 0) {
                 currentDataRows = [];
                 activeColumns = [];
@@ -446,11 +457,29 @@ setInterval(checkClipboardData, 1500);
 btnStart.addEventListener('click', () => {
     if (isMacroRunning) return;
     
-    // 사용자가 체크한 활성 열 인덱스들
+    // 오름차순 정렬된 활성 열 목록
     const activeColsToSend = [...activeColumns].sort((a, b) => a - b);
     
-    // 가공이 완료된 로컬 2차원 데이터 배열과 활성 열 목록을 백엔드로 직접 넘깁니다.
-    eel.start_macro(currentTabCount, currentDelay, currentDataRows, activeColsToSend);
+    if (isMergeModeActive) {
+        // [일괄 병합 모드 작동]
+        // 각 학생 행별로 체크된 열들의 세특 텍스트를 줄바꿈('\n')으로 엮은 1열짜리 데이터 재생성
+        const processedRows = currentDataRows.map(row => {
+            const cellsToMerge = [];
+            activeColsToSend.forEach(idx => {
+                if (row[idx] !== undefined && row[idx] !== '') {
+                    cellsToMerge.push(row[idx]);
+                }
+            });
+            // 줄바꿈으로 머지
+            return [cellsToMerge.join('\n')];
+        });
+        
+        // 백엔드에는 병합된 0번 인덱스 열만 복사-입력하도록 전송
+        eel.start_macro(currentTabCount, currentDelay, processedRows, [0]);
+    } else {
+        // [일반 개별 입력 모드 작동]
+        eel.start_macro(currentTabCount, currentDelay, currentDataRows, activeColsToSend);
+    }
 });
 
 btnStop.addEventListener('click', () => {
@@ -475,7 +504,6 @@ function set_running_state(isRunning) {
         btnPlus.disabled = true;
         delaySlider.disabled = true;
         
-        // 체크박스 헤더 영역 숨기기
         const cbHeader = document.getElementById('colCheckboxHeader');
         if (cbHeader) cbHeader.style.display = 'none';
         
@@ -493,7 +521,6 @@ function set_running_state(isRunning) {
         clipboardStatusEl.style.display = 'flex';
         activeStatusContainer.style.display = 'none';
         
-        // 원복 후 클립보드 데이터 새로고침
         setTimeout(checkClipboardData, 500);
     }
 }
