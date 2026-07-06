@@ -55,7 +55,7 @@ body {
 
 /* 메인 컨테이너 */
 .app-container {
-    width: 420px;
+    width: 560px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 24px;
@@ -533,7 +533,7 @@ body {
 /* 표 미리보기 영역 스타일 */
 .preview-table-container {
     margin-top: 14px;
-    max-height: 120px;
+    max-height: 240px;
     overflow-y: auto;
     overflow-x: auto;
     border: 1px solid var(--border-color);
@@ -579,11 +579,17 @@ body {
 }
 
 .preview-table td {
-    padding: 6px 10px;
+    padding: 8px 10px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.03);
     color: #d1d5db;
-    white-space: nowrap;
-    max-width: 220px;
+    white-space: normal;
+    word-break: break-all;
+    min-width: 120px;
+    max-width: 260px;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
     overflow: hidden;
     text-overflow: ellipsis;
 }

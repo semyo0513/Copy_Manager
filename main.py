@@ -203,9 +203,9 @@ if __name__ == '__main__':
     eel.init(web_dir)
     
     # Eel UI 시작 (창 모드 크기 및 크롬 앱 모드로 실행)
-    # --noconsole 빌드와 조화를 이루도록 브라우저 창을 420x680 크기로 조절합니다.
+    # --noconsole 빌드와 조화를 이루도록 브라우저 창을 600x720 크기로 조절합니다.
     try:
-        eel.start('index.html', size=(420, 680), port=0)
+        eel.start('index.html', size=(600, 720), port=0)
     except (SystemExit, MemoryError, KeyboardInterrupt):
         # 사용자 프로그램 종료 시 정상 처리
         pass
